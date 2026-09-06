@@ -36,7 +36,8 @@ jobs:
           envs=$(for d in environments/*/; do
                    [ -f "$d/.ci-ignore" ] && continue
                    basename "$d"
-                 done | sort | jq -R -s -c 'split("\n")[:-1]')
+                 done | sort | jq -R -s -c \
+                 '[split("\n")[:-1][] | {environment: ., key: (ascii_upcase | gsub("-"; "_"))}]')
           echo "environments=$envs" >> "$GITHUB_OUTPUT"
 
   apply:
@@ -49,24 +50,24 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        environment: ${{ fromJSON(needs.discover.outputs.environments) }}
+        target: ${{ fromJSON(needs.discover.outputs.environments) }}
 
     # The approval gate. Required reviewers are configured on the GitHub
     # environment of this name, not here — see the repo settings note in
     # .github/workflows/README.md. Without that configuration this job runs
     # unattended, which is the failure mode to check for.
-    environment: ${{ matrix.environment }}
+    environment: ${{ matrix.target.environment }}
 
     # Deliberately NOT cancel-in-progress. Interrupting apply between the API
     # call and the state write is how state ends up describing a world that
     # does not exist. Queue instead.
     concurrency:
-      group: apply-${{ matrix.environment }}
+      group: apply-${{ matrix.target.environment }}
       cancel-in-progress: false
 
     defaults:
       run:
-        working-directory: environments/${{ matrix.environment }}
+        working-directory: environments/${{ matrix.target.environment }}
 
     steps:
       - uses: actions/checkout@v7
@@ -79,6 +80,21 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
+
+      # Variable values are not in the repository — terraform.tfvars is
+      # gitignored and org, billing and folder IDs must not be committed. Each
+      # environment's values live in a repository variable named TFVARS_<ENV>,
+      # holding the whole tfvars as JSON. Without this step every root fails
+      # with "No value for required variable".
+      - name: Materialise tfvars
+        env:
+          TFVARS: ${{ vars[format('TFVARS_{0}', matrix.target.key)] }}
+        run: |
+          if [ -z "$TFVARS" ]; then
+            echo "::error::Repository variable TFVARS_${{ matrix.target.key }} is not set."
+            exit 1
+          fi
+          printf '%s' "$TFVARS" > terraform.tfvars.json
 
       - run: terraform init -input=false
 

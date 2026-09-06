@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+folder          = "folders/123456789012"
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+project_id      = "acme-net-hub"
+
+# Empty means: hub exists, nothing bills. Populate only when you actually want
+# transit between the environments — each entry is a billed spoke-hour.
+#
+# Values come from the environment roots:
+#   terraform -chdir=../production     output -raw network_self_link
+#   terraform -chdir=../non-production output -raw network_self_link
+#
+# vpc_spokes = {
+#   prd = {
+#     network               = "projects/acme-host-prd/global/networks/shared-prd"
+#     include_export_ranges = ["10.0.0.0/12"]
+#   }
+#   nonprd = {
+#     network               = "projects/acme-host-nonprd/global/networks/shared-nonprd"
+#     include_export_ranges = ["10.1.0.0/12"]
+#   }
+# }
+vpc_spokes = {}

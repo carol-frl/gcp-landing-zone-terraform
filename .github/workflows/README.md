@@ -31,6 +31,41 @@ gh variable set CI_SERVICE_ACCOUNT \
   --body "$(terraform -chdir=../../environments/bootstrap output -raw ci_service_account_email)"
 ```
 
+### Per-environment variable values
+
+`terraform.tfvars` is gitignored and org, billing and folder IDs are not
+committed, so CI has no variable values unless they are supplied. Each
+environment's values live in a repository variable named `TFVARS_<ENV>`, where
+`<ENV>` is the directory name uppercased with hyphens replaced by underscores.
+The workflows write it to `terraform.tfvars.json` before `init`.
+
+| Directory | Repository variable |
+|---|---|
+| `environments/production` | `TFVARS_PRODUCTION` |
+| `environments/non-production` | `TFVARS_NON_PRODUCTION` |
+| `environments/network-hub` | `TFVARS_NETWORK_HUB` |
+
+```bash
+gh variable set TFVARS_PRODUCTION --body '{
+  "parent": "organizations/123456789012",
+  "billing_account": "XXXXXX-XXXXXX-XXXXXX",
+  "project_prefix": "acme",
+  "workload_identity_pool_name": "projects/123456789012/locations/global/workloadIdentityPools/github",
+  "list_constraints": {
+    "iam.allowedPolicyMemberDomains": { "allowed_values": ["C01abc234"] },
+    "compute.vmExternalIpAccess": { "deny_all": true },
+    "gcp.resourceLocations": { "allowed_values": ["in:eu-locations"] }
+  }
+}'
+```
+
+JSON rather than HCL because `terraform.tfvars.json` is parsed natively and a
+repository variable is a single string — `list_constraints` is a nested map and
+does not survive being flattened into `TF_VAR_` environment variables.
+
+A missing variable fails the job with a named error rather than a confusing
+"No value for required variable" from Terraform.
+
 ## The approval gate is not in this repo
 
 `environment: ${{ matrix.environment }}` only enforces something once a GitHub
@@ -68,3 +103,11 @@ Review is a human reading a diff.
 
 **No drift detection.** Nothing notices if someone changes the org in the
 console. A scheduled plan that fails on a non-empty diff would.
+
+**Apply order is alphabetical, not dependency order.** The matrix runs
+`network-hub`, `non-production`, `production` in that order with
+`max-parallel: 1`. The hub only truly depends on the environment roots when its
+`vpc_spokes` is populated with their network self links — which is why that
+field defaults to empty. Populate it and the first apply on a clean org will
+run in the wrong order. There is no cross-root dependency graph in Terraform to
+prevent this; see docs/decisions/002-ncc-hub-topology.md.

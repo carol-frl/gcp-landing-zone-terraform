@@ -1,6 +1,8 @@
-%% Shared VPC topology, production. non-production is identical with
-%% 10.1.x / 10.96.x / 10.112.x ranges and its own host project.
-%% Source: modules/shared-vpc, modules/project-factory, teams/teams.yaml
+%% Shared VPC topology plus the NCC transit hub.
+%% Production shown; non-production is identical with 10.1.x / 10.96.x /
+%% 10.112.x ranges, its own host project, and its own spoke on the same hub.
+%% Source: modules/shared-vpc, modules/ncc-hub, modules/project-factory,
+%%         teams/teams.yaml
 %% Dashed = not provisioned by default.
 
 flowchart TB
@@ -30,17 +32,25 @@ flowchart TB
   SUB2 -.-> NAT
   NAT -.-> INET(["internet"])
 
-  NET -.-> ICON["Dedicated Interconnect<br/>4 attachments · 2 metros · 99.99%<br/>documented only"]
+  subgraph HUBP["acme-net-hub — network hub project"]
+    HUB["NCC hub · lz-hub<br/>vpc_spokes = {} by default"]
+  end
+
+  NET -.->|VPC spoke · billed per spoke-hour<br/>include_export_ranges| HUB
+  NPRD["shared-nonprd<br/>non-production Shared VPC"] -.->|VPC spoke| HUB
+  HUB -.->|Interconnect spokes<br/>transitive to both environments| ICON["Dedicated Interconnect<br/>4 attachments · 2 metros · 99.99%<br/>documented only"]
   ICON -.-> ONPREM(["on-premises"])
 
   classDef host fill:#1a4a72,stroke:#0d2c45,color:#fff
   classDef subnet fill:#e8f0f7,stroke:#2d6ca3,color:#12304a
   classDef svc fill:#eaf5ea,stroke:#3d7a3d,color:#1d3d1d
   classDef policy fill:#fff4e0,stroke:#c47f1a,color:#5a3a05
+  classDef hub fill:#5b2d6c,stroke:#3a1c46,color:#fff
   classDef off fill:#f2f2f2,stroke:#999,color:#555,stroke-dasharray:4 3
 
-  class NET host
+  class NET,NPRD host
   class SUB1,SUB2 subnet
   class SP1,SP2 svc
   class FW,GAPI policy
+  class HUB hub
   class NAT,ICON,INET,ONPREM off

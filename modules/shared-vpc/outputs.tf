@@ -8,6 +8,11 @@ output "network_id" {
   value       = google_compute_network.vpc.id
 }
 
+output "network_self_link" {
+  description = "Network self link. This is what an NCC VPC spoke's linked_vpc_network.uri wants."
+  value       = google_compute_network.vpc.self_link
+}
+
 output "subnet_ids" {
   description = "Subnet self links keyed by \"team/region\". The project factory binds subnet IAM against these."
   value       = { for k, s in google_compute_subnetwork.team : k => s.id }

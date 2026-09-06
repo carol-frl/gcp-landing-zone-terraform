@@ -3,11 +3,15 @@
 %%         environments/bootstrap, environments/production,
 %%         environments/non-production, teams/teams.yaml
 %% Project IDs shown with project_prefix = "acme".
+%% Parent/child only — the NCC spoke relationship is in network.mmd.
 
 flowchart TD
   ORG(["Organization"])
 
   ORG --> BOOT["acme-lz-bootstrap<br/>state bucket · CI service account · WIF pool"]
+
+  ORG --> PLAT["platform<br/>folder — created by hand"]
+  PLAT --> HUBP["acme-net-hub<br/>NCC hub · lz-hub<br/>vpc_spokes = {} by default"]
 
   ORG --> PRD["production<br/>folder"]
   ORG --> NPRD["non-production<br/>folder"]
@@ -40,8 +44,10 @@ flowchart TD
   classDef folder fill:#2d6ca3,stroke:#1a4a72,color:#fff
   classDef project fill:#e8f0f7,stroke:#2d6ca3,color:#12304a
   classDef policy fill:#fff4e0,stroke:#c47f1a,color:#5a3a05,stroke-dasharray:4 3
+  classDef hub fill:#5b2d6c,stroke:#3a1c46,color:#fff
 
   class ORG org
-  class PRD,NPRD,PPAY,PDAT,NPAY,NDAT folder
+  class PRD,NPRD,PLAT,PPAY,PDAT,NPAY,NDAT folder
   class BOOT,PHOST,NHOST,PPAYP,PDATP,NPAYP,NDATP project
+  class HUBP hub
   class POLP,POLN,IAMP,IAMN policy

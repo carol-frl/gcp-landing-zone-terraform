@@ -55,7 +55,8 @@ jobs:
           envs=$(for d in environments/*/; do
                    [ -f "$d/.ci-ignore" ] && continue
                    basename "$d"
-                 done | sort | jq -R -s -c 'split("\n")[:-1]')
+                 done | sort | jq -R -s -c \
+                 '[split("\n")[:-1][] | {environment: ., key: (ascii_upcase | gsub("-"; "_"))}]')
           echo "environments=$envs" >> "$GITHUB_OUTPUT"
           echo "Planning: $envs"
 
@@ -70,11 +71,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: ${{ fromJSON(needs.discover.outputs.environments) }}
+        target: ${{ fromJSON(needs.discover.outputs.environments) }}
 
     defaults:
       run:
-        working-directory: environments/${{ matrix.environment }}
+        working-directory: environments/${{ matrix.target.environment }}
 
     steps:
       - uses: actions/checkout@v7
@@ -90,6 +91,21 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
+
+      # Variable values are not in the repository — terraform.tfvars is
+      # gitignored and org, billing and folder IDs must not be committed. Each
+      # environment's values live in a repository variable named TFVARS_<ENV>,
+      # holding the whole tfvars as JSON. Without this step every root fails
+      # with "No value for required variable".
+      - name: Materialise tfvars
+        env:
+          TFVARS: ${{ vars[format('TFVARS_{0}', matrix.target.key)] }}
+        run: |
+          if [ -z "$TFVARS" ]; then
+            echo "::error::Repository variable TFVARS_${{ matrix.target.key }} is not set."
+            exit 1
+          fi
+          printf '%s' "$TFVARS" > terraform.tfvars.json
 
       - run: terraform init -input=false
 
@@ -110,7 +126,7 @@ jobs:
       - uses: actions/github-script@v9
         if: always() && steps.plan.outcome != 'skipped'
         env:
-          ENVIRONMENT: ${{ matrix.environment }}
+          ENVIRONMENT: ${{ matrix.target.environment }}
           EXITCODE: ${{ steps.plan.outputs.exitcode }}
         with:
           script: |
