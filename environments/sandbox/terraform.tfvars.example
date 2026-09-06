@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+# Create this folder by hand once, then never apply this root anywhere else.
+# gcloud resource-manager folders create --display-name=sandbox --organization=ORG_ID
+parent = "folders/123456789012"
+
+environments = ["production", "non-production"]
+teams        = ["payments", "data-platform"]
+
+# gcloud organizations describe ORG_ID --format='value(owner.directoryCustomerId)'
+allowed_customer_ids = ["C01abc234"]
+
+# See cloud.google.com/resource-manager/docs/organization-policy/defining-locations
+allowed_locations = ["in:eu-locations"]

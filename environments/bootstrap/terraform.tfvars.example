@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+# Numeric org ID: gcloud organizations list
+org_id = "123456789012"
+
+# Billing account ID: gcloud billing accounts list
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+
+# Must be globally unique. Also becomes the state bucket name + "-tfstate".
+project_id = "acme-lz-bootstrap"
+
+# owner/name. Only this repo can impersonate the CI service account.
+github_repo = "carol-frl/gcp-landing-zone-terraform"
+
+# Bucket location. Permanent — moving state later is a manual copy.
+region = "europe-west4"
+
+# Google Group, not a user. Create it before applying.
+terraform_admin_group = "group:gcp-terraform-admins@example.com"
