@@ -1,0 +1,5 @@
+Applied by a human, never by CI.
+
+This root creates the service account and Workload Identity pool that the
+workflows authenticate with, so it cannot be run by that identity. See
+docs/decisions/000-bootstrap-and-state.md.

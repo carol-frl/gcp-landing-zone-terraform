@@ -1,0 +1,92 @@
+name: terraform apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "environments/**"
+      - "modules/**"
+      - "teams/**"
+      - ".github/workflows/terraform-*.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  # Pinned to the version that applies environments/bootstrap locally.
+  # Terraform state is forward-incompatible: a state file written by a
+  # newer CLI cannot be read by an older one, so a CI pin below the
+  # version anyone applies with breaks every run after the first local
+  # apply. required_version in the roots is a floor (>= 1.13.4); this is the
+  # exact version, and it should move deliberately.
+  TF_VERSION: "1.13.4"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.find.outputs.environments }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        # Skips any environment carrying a .ci-ignore file. Must match the
+        # plan workflow, or main applies something that was never planned.
+        run: |
+          envs=$(for d in environments/*/; do
+                   [ -f "$d/.ci-ignore" ] && continue
+                   basename "$d"
+                 done | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "environments=$envs" >> "$GITHUB_OUTPUT"
+
+  apply:
+    needs: discover
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Never abandon a half-applied environment because a different one
+      # failed. Each leg stands alone.
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        environment: ${{ fromJSON(needs.discover.outputs.environments) }}
+
+    # The approval gate. Required reviewers are configured on the GitHub
+    # environment of this name, not here — see the repo settings note in
+    # .github/workflows/README.md. Without that configuration this job runs
+    # unattended, which is the failure mode to check for.
+    environment: ${{ matrix.environment }}
+
+    # Deliberately NOT cancel-in-progress. Interrupting apply between the API
+    # call and the state write is how state ends up describing a world that
+    # does not exist. Queue instead.
+    concurrency:
+      group: apply-${{ matrix.environment }}
+      cancel-in-progress: false
+
+    defaults:
+      run:
+        working-directory: environments/${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init -input=false
+
+      # Re-planned here rather than reusing the PR's plan file. That is a real
+      # gap: what a reviewer approved on the PR and what is applied after merge
+      # are two separate plans, and the world can change between them. Passing
+      # the plan artifact across workflows would close it, at the cost of the
+      # artifact going stale against other merges.
+      - run: terraform plan -input=false -no-color -lock-timeout=5m -out=tfplan
+
+      - run: terraform apply -input=false -no-color -lock-timeout=5m tfplan

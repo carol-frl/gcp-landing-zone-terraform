@@ -1,0 +1,46 @@
+%% Shared VPC topology, production. non-production is identical with
+%% 10.1.x / 10.96.x / 10.112.x ranges and its own host project.
+%% Source: modules/shared-vpc, modules/project-factory, teams/teams.yaml
+%% Dashed = not provisioned by default.
+
+flowchart TB
+  FW["Hierarchical firewall policy<br/>1000 allow IAP 35.235.240.0/20<br/>1100 allow health checks<br/>2000 deny 22 · 3389 · 445 · 135-139<br/>65000 goto_next"]
+
+  SP1["acme-payments-prd<br/>service project"]
+  SP2["acme-data-platform-prd<br/>service project"]
+
+  subgraph HOST["acme-host-prd — Shared VPC host project"]
+    direction TB
+    NET["shared-prd<br/>VPC · GLOBAL routing<br/>auto_create_subnetworks = false"]
+    SUB1["payments-europe-west4<br/>primary 10.0.0.0/20<br/>pods 10.64.0.0/16<br/>services 10.80.0.0/20<br/>Private Google Access on"]
+    SUB2["data-platform-europe-west4<br/>primary 10.0.16.0/20<br/>pods 10.65.0.0/16<br/>services 10.80.16.0/20<br/>Private Google Access on"]
+    NET --> SUB1
+    NET --> SUB2
+  end
+
+  FW -.->|attached at production folder<br/>evaluated before VPC rules| NET
+
+  SP1 -->|compute.networkUser| SUB1
+  SP2 -->|compute.networkUser| SUB2
+
+  SUB1 --> GAPI["Google APIs<br/>via Private Google Access"]
+  SUB2 --> GAPI
+
+  SUB1 -.-> NAT["Cloud Router + Cloud NAT<br/>per region · enable_nat = false"]
+  SUB2 -.-> NAT
+  NAT -.-> INET(["internet"])
+
+  NET -.-> ICON["Dedicated Interconnect<br/>4 attachments · 2 metros · 99.99%<br/>documented only"]
+  ICON -.-> ONPREM(["on-premises"])
+
+  classDef host fill:#1a4a72,stroke:#0d2c45,color:#fff
+  classDef subnet fill:#e8f0f7,stroke:#2d6ca3,color:#12304a
+  classDef svc fill:#eaf5ea,stroke:#3d7a3d,color:#1d3d1d
+  classDef policy fill:#fff4e0,stroke:#c47f1a,color:#5a3a05
+  classDef off fill:#f2f2f2,stroke:#999,color:#555,stroke-dasharray:4 3
+
+  class NET host
+  class SUB1,SUB2 subnet
+  class SP1,SP2 svc
+  class FW,GAPI policy
+  class NAT,ICON,INET,ONPREM off

@@ -1,0 +1,169 @@
+name: terraform plan
+
+on:
+  pull_request:
+    paths:
+      - "environments/**"
+      - "modules/**"
+      - "teams/**"
+      - ".github/workflows/terraform-*.yml"
+
+# A superseded plan is worthless, so cancel it. The apply workflow does the
+# opposite — see the comment there.
+concurrency:
+  group: plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write        # the OIDC token exchanged for GCP credentials
+  pull-requests: write   # to post the plan comment
+
+env:
+  # Pinned to the version that applies environments/bootstrap locally.
+  # Terraform state is forward-incompatible: a state file written by a
+  # newer CLI cannot be read by an older one, so a CI pin below the
+  # version anyone applies with breaks every run after the first local
+  # apply. required_version in the roots is a floor (>= 1.13.4); this is the
+  # exact version, and it should move deliberately.
+  TF_VERSION: "1.13.4"
+
+jobs:
+  # Cheap checks once, rather than repeated per matrix leg.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - run: terraform fmt -check -recursive
+
+  # "Matrix over the environments/ directories" — discovered rather than
+  # listed, so adding an environment does not mean editing this file.
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.find.outputs.environments }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: find
+        # Any environment containing a .ci-ignore file is skipped, and that
+        # file says why. Keeps the exclusion next to the thing excluded rather
+        # than in two workflows that drift apart.
+        run: |
+          envs=$(for d in environments/*/; do
+                   [ -f "$d/.ci-ignore" ] && continue
+                   basename "$d"
+                 done | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "environments=$envs" >> "$GITHUB_OUTPUT"
+          echo "Planning: $envs"
+
+  plan:
+    needs: [lint, discover]
+    runs-on: ubuntu-latest
+
+    # A pull request from a fork gets no id-token, so authentication would fail
+    # with a confusing error. Skip explicitly instead.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(needs.discover.outputs.environments) }}
+
+    defaults:
+      run:
+        working-directory: environments/${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # No service account key anywhere in this workflow. The token is minted
+      # by GitHub, exchanged for a short-lived GCP credential, and expires with
+      # the job.
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - run: terraform init -input=false
+
+      - run: terraform validate -no-color
+
+      - id: plan
+        # -detailed-exitcode distinguishes "no changes" (0) from "changes" (2),
+        # so the comment can say which. 1 is a real failure.
+        run: |
+          set +e
+          terraform plan -input=false -no-color -lock-timeout=5m -detailed-exitcode -out=tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          cat plan.txt
+          exit $([ $code -eq 1 ] && echo 1 || echo 0)
+
+      - uses: actions/github-script@v9
+        if: always() && steps.plan.outcome != 'skipped'
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const env = process.env.ENVIRONMENT;
+            const code = process.env.EXITCODE;
+
+            // One comment per environment, updated in place. Otherwise a
+            // long-running PR accumulates a dozen stale plans and the reviewer
+            // reads the wrong one.
+            const marker = `<!-- tf-plan:${env} -->`;
+
+            let body = fs.readFileSync('environments/' + env + '/plan.txt', 'utf8');
+
+            // GitHub rejects comments over 65536 characters. Keep the tail:
+            // the summary line is at the bottom.
+            const limit = 60000;
+            let truncated = false;
+            if (body.length > limit) {
+              body = body.slice(body.length - limit);
+              truncated = true;
+            }
+
+            const status = code === '0' ? 'No changes'
+                         : code === '2' ? 'Changes planned'
+                         : 'Plan failed';
+
+            const comment = [
+              marker,
+              `### \`${env}\` — ${status}`,
+              truncated ? '_Output truncated; earlier lines are in the job log._' : '',
+              '',
+              '<details><summary>Plan output</summary>',
+              '',
+              '```terraform',
+              body,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: existing.id, body: comment,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body: comment,
+              });
+            }

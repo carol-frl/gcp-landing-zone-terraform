@@ -1,0 +1,5 @@
+Scratch root for trying org policy against a throwaway folder.
+
+Not part of the pipeline: it needs a hand-created sandbox folder and its own
+tfvars, and it overlaps with environments/production and
+environments/non-production. Delete this root once the policy set is settled.

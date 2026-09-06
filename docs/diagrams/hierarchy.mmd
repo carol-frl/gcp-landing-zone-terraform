@@ -1,0 +1,47 @@
+%% Org / folder / project hierarchy.
+%% Source: modules/folder-structure, modules/project-factory,
+%%         environments/bootstrap, environments/production,
+%%         environments/non-production, teams/teams.yaml
+%% Project IDs shown with project_prefix = "acme".
+
+flowchart TD
+  ORG(["Organization"])
+
+  ORG --> BOOT["acme-lz-bootstrap<br/>state bucket · CI service account · WIF pool"]
+
+  ORG --> PRD["production<br/>folder"]
+  ORG --> NPRD["non-production<br/>folder"]
+
+  PRD --> PHOST["acme-host-prd<br/>Shared VPC host"]
+  PRD --> PPAY["payments<br/>folder"]
+  PRD --> PDAT["data-platform<br/>folder"]
+  PPAY --> PPAYP["acme-payments-prd"]
+  PDAT --> PDATP["acme-data-platform-prd"]
+
+  NPRD --> NHOST["acme-host-nonprd<br/>Shared VPC host"]
+  NPRD --> NPAY["payments<br/>folder"]
+  NPRD --> NDAT["data-platform<br/>folder"]
+  NPAY --> NPAYP["acme-payments-nonprd"]
+  NDAT --> NDATP["acme-data-platform-nonprd"]
+
+  POLP["org policy set<br/>3 boolean · 3 list<br/>incl. vmExternalIpAccess deny"]
+  POLN["org policy set<br/>3 boolean · 2 list<br/>vmExternalIpAccess omitted"]
+  POLP -.->|applied at| PRD
+  POLN -.->|applied at| NPRD
+
+  IAMP["group bindings<br/>admins · developers<br/>no projectIamAdmin"]
+  IAMN["group bindings<br/>admins · developers<br/>incl. projectIamAdmin"]
+  IAMP -.-> PPAY
+  IAMP -.-> PDAT
+  IAMN -.-> NPAY
+  IAMN -.-> NDAT
+
+  classDef org fill:#1a4a72,stroke:#0d2c45,color:#fff
+  classDef folder fill:#2d6ca3,stroke:#1a4a72,color:#fff
+  classDef project fill:#e8f0f7,stroke:#2d6ca3,color:#12304a
+  classDef policy fill:#fff4e0,stroke:#c47f1a,color:#5a3a05,stroke-dasharray:4 3
+
+  class ORG org
+  class PRD,NPRD,PPAY,PDAT,NPAY,NDAT folder
+  class BOOT,PHOST,NHOST,PPAYP,PDATP,NPAYP,NDATP project
+  class POLP,POLN,IAMP,IAMN policy

@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+parent          = "organizations/123456789012"
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+project_prefix  = "acme"
+
+workload_identity_pool_name = "projects/123456789012/locations/global/workloadIdentityPools/github"
+
+# compute.vmExternalIpAccess is deliberately absent here. Omitting a constraint
+# leaves it inherited from the parent rather than set at this folder, so a
+# developer can put an external IP on a scratch VM without a policy exception.
+# That is the difference between the environments, and it is intentional.
+list_constraints = {
+  "iam.allowedPolicyMemberDomains" = { allowed_values = ["C01abc234"] }
+  "gcp.resourceLocations"          = { allowed_values = ["in:eu-locations"] }
+}
+
+enable_nat = false

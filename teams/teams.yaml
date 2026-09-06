@@ -1,0 +1,74 @@
+# The team contract.
+#
+# Adding a team is a change to this file and nothing else. Every field exists
+# because something downstream reads it — if you add a field and nothing
+# consumes it, delete it instead of leaving it to rot.
+#
+# Address ranges live here rather than being generated, so that allocating IP
+# space is a reviewable diff. See modules/shared-vpc/README.md for why.
+
+teams:
+  payments:
+    display_name: Payments
+
+    # Labelled onto every project this team owns. Billing export is grouped by
+    # this, because folder position cannot answer "what does payments cost"
+    # under an environment-above-team hierarchy (see ADR 001).
+    cost_centre: CC-4471
+
+    # The only repository whose GitHub Actions may deploy into this team's
+    # projects. Scoped per team: a compromised payments pipeline cannot reach
+    # data-platform.
+    github_repo: carol-frl/payments-infra
+
+    groups:
+      # Control over the team's own resources, bound at the team folder.
+      admins: gcp-payments-admins@example.com
+      # Day-to-day work: deploy, read logs, use the delegated subnet.
+      developers: gcp-payments-devs@example.com
+
+    region: europe-west4
+
+    # One subnet per environment, in that environment's own host project.
+    # Ranges must not overlap with any other team in the same environment.
+    networks:
+      production:
+        primary: 10.0.0.0/20
+        pods: 10.64.0.0/16
+        services: 10.80.0.0/20
+      non-production:
+        primary: 10.1.0.0/20
+        pods: 10.96.0.0/16
+        services: 10.112.0.0/20
+
+    # Monthly budget in USD per environment. Alert thresholds are fixed by the
+    # factory at 50/90/100% plus a forecast alert — teams choose the amount,
+    # not the policy.
+    budget_usd:
+      production: 500
+      non-production: 100
+
+  data-platform:
+    display_name: Data Platform
+    cost_centre: CC-8802
+    github_repo: carol-frl/data-platform-infra
+
+    groups:
+      admins: gcp-data-platform-admins@example.com
+      developers: gcp-data-platform-devs@example.com
+
+    region: europe-west4
+
+    networks:
+      production:
+        primary: 10.0.16.0/20
+        pods: 10.65.0.0/16
+        services: 10.80.16.0/20
+      non-production:
+        primary: 10.1.16.0/20
+        pods: 10.97.0.0/16
+        services: 10.112.16.0/20
+
+    budget_usd:
+      production: 1200
+      non-production: 200

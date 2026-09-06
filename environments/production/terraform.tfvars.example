@@ -1,0 +1,19 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+parent          = "organizations/123456789012"
+billing_account = "XXXXXX-XXXXXX-XXXXXX"
+project_prefix  = "acme"
+
+# From: terraform -chdir=../bootstrap output -raw workload_identity_provider
+# (pool portion only: projects/NNN/locations/global/workloadIdentityPools/github)
+workload_identity_pool_name = "projects/123456789012/locations/global/workloadIdentityPools/github"
+
+# Production denies external IPs outright. Egress is via Cloud NAT if enabled.
+list_constraints = {
+  "iam.allowedPolicyMemberDomains" = { allowed_values = ["C01abc234"] }
+  "compute.vmExternalIpAccess"     = { deny_all = true }
+  "gcp.resourceLocations"          = { allowed_values = ["in:eu-locations"] }
+}
+
+# Costs money the moment it is true. See modules/shared-vpc/README.md.
+enable_nat = false
